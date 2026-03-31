@@ -1,0 +1,11 @@
+.DS_Store
+
+# PlatformIO build artifacts
+.pio/
+
+# Rust build artifacts (server)
+server/target/
+
+# Local env files
+.env
+server/.env
