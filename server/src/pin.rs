@@ -17,6 +17,7 @@ use crate::AppState;
 pub struct CreatePinRequest {
     pub locker_id: String,
     pub recipient_phone: Option<String>,
+    pub package_id: Option<uuid::Uuid>,
 }
 
 #[derive(Serialize)]
@@ -39,7 +40,7 @@ pub struct VerifyPinResponse {
 
 // --- Helpers ---
 
-fn hash_pin(pin: &str, salt: &str) -> String {
+pub fn hash_pin(pin: &str, salt: &str) -> String {
     let input = format!("{}{}", pin, salt);
     hex::encode(Sha256::digest(input.as_bytes()))
 }
@@ -141,6 +142,7 @@ pub async fn create_pin(
     .bind(&salt)
     .bind(expires_at)
     .bind(now)
+    .bind(payload.package_id)
     .execute(&state.db)
     .await
     .map_err(|_| {

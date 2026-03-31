@@ -16,11 +16,11 @@ use tokio::sync::RwLock;
 mod auth;
 mod db;
 mod pin;
+mod qr;
 mod rate_limit;
 mod sms;
 
 // --- Existing CRUD types ---
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct Item {
     id: String,
@@ -44,7 +44,6 @@ impl axum::extract::FromRef<AppState> for PgPool {
 }
 
 // --- Existing CRUD handlers ---
-
 async fn create_item(
     State(state): State<AppState>,
     Json(payload): Json<CreateItemRequest>,
@@ -55,7 +54,6 @@ async fn create_item(
         name: payload.name,
         description: payload.description,
     };
-
     state.items.write().await.insert(id, item.clone());
     (StatusCode::CREATED, Json(item))
 }
@@ -83,7 +81,6 @@ async fn update_item(
     Json(payload): Json<UpdateItemRequest>,
 ) -> Result<Json<Item>, StatusCode> {
     let mut items = state.items.write().await;
-
     if let Some(item) = items.get_mut(&id) {
         if let Some(name) = payload.name {
             item.name = name;
@@ -121,14 +118,12 @@ struct UpdateItemRequest {
 }
 
 // --- Main ---
-
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
     tracing_subscriber::fmt::init();
 
     let pool = db::init_pool().await;
-
     let twilio = sms::TwilioConfig::from_env().map(Arc::new);
     if twilio.is_some() {
         println!("Twilio SMS enabled");
@@ -168,6 +163,9 @@ async fn main() {
         // PIN system
         .route("/pins", post(pin::create_pin))
         .route("/pins/verify", post(pin::verify_pin))
+        // QR verification system
+        .route("/qr/generate", post(qr::generate_qr))
+        .route("/qr/verify", post(qr::verify_qr))
         // Command polling (ESP32 polls this)
         .route("/commands/poll", get(pin::poll_command))
         .with_state(state);
@@ -178,15 +176,18 @@ async fn main() {
 
     println!("Server running at http://127.0.0.1:3000");
     println!("CRUD Endpoints:");
-    println!("  POST   /items          - Create item");
-    println!("  GET    /items          - List all items");
-    println!("  GET    /items/{{id}}     - Get item by id");
-    println!("  PUT    /items/{{id}}     - Update item");
-    println!("  DELETE /items/{{id}}     - Delete item");
+    println!("  POST /items - Create item");
+    println!("  GET /items - List all items");
+    println!("  GET /items/{{id}} - Get item by id");
+    println!("  PUT /items/{{id}} - Update item");
+    println!("  DELETE /items/{{id}} - Delete item");
     println!("PIN Endpoints:");
-    println!("  POST   /pins           - Generate a one-time PIN");
-    println!("  POST   /pins/verify    - Verify PIN (ESP32 device)");
-    println!("  GET    /commands/poll   - Poll for pending commands (ESP32)");
+    println!("  POST /pins - Generate a one-time PIN");
+    println!("  POST /pins/verify - Verify PIN (ESP32 device)");
+    println!("QR Endpoints:");
+    println!("  POST /qr/generate - Generate QR code for locker verification");
+    println!("  POST /qr/verify - Verify QR + PIN combo (ESP32 device)");
+    println!("  GET /commands/poll - Poll for pending commands (ESP32)");
 
     axum::serve(listener, app).await.unwrap();
 }
@@ -202,7 +203,6 @@ mod tests {
             name: "Test Item".to_string(),
             description: "A test description".to_string(),
         };
-        
         let json = serde_json::to_string(&item).unwrap();
         assert!(json.contains("test-id"));
         assert!(json.contains("Test Item"));
@@ -212,7 +212,6 @@ mod tests {
     fn test_item_deserialization() {
         let json = r#"{"id":"test-id","name":"Test","description":"Desc"}"#;
         let item: Item = serde_json::from_str(json).unwrap();
-        
         assert_eq!(item.id, "test-id");
         assert_eq!(item.name, "Test");
         assert_eq!(item.description, "Desc");
@@ -224,7 +223,6 @@ mod tests {
             name: "Test".to_string(),
             description: "Description".to_string(),
         };
-        
         assert_eq!(req.name, "Test");
         assert_eq!(req.description, "Description");
     }
@@ -235,7 +233,6 @@ mod tests {
             name: Some("New Name".to_string()),
             description: None,
         };
-        
         assert_eq!(req.name, Some("New Name".to_string()));
         assert_eq!(req.description, None);
     }
