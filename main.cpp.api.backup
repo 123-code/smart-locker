@@ -1,0 +1,81 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+// Forward declarations
+void testVerify(const char* pin);
+
+// ---- CONFIGURATION ----
+const char* WIFI_SSID     = "FANARMA";
+const char* WIFI_PASS     = "SucoMAX2021";
+const char* SERVER_URL    = "http://192.169.58.134:3000/pins/verify";
+const char* API_KEY       = "test-device-key-123";
+// ------------------------
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  Serial.println("\n=== ESP32 Locker Test ===");
+
+  // Connect to WiFi
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.printf("\nConnected! IP: %s\n", WiFi.localIP().toString().c_str());
+
+  // Run a test verification
+  Serial.println("\nSending test PIN verification...");
+  testVerify("000000");
+}
+
+void testVerify(const char* pin) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("ERROR: WiFi not connected");
+    return;
+  }
+
+  HTTPClient http;
+  http.begin(SERVER_URL);
+  http.addHeader("Content-Type", "application/json");
+
+  // Build the Authorization header
+  String authHeader = "Bearer ";
+  authHeader += API_KEY;
+  http.addHeader("Authorization", authHeader);
+
+  // Build JSON body
+  String body = "{\"pin\":\"";
+  body += pin;
+  body += "\"}";
+
+  Serial.printf("POST %s\n", SERVER_URL);
+  Serial.printf("Body: %s\n", body.c_str());
+
+  int httpCode = http.POST(body);
+
+  if (httpCode > 0) {
+    Serial.printf("HTTP %d\n", httpCode);
+    Serial.printf("Response: %s\n", http.getString().c_str());
+  } else {
+    Serial.printf("HTTP request failed: %s\n", http.errorToString(httpCode).c_str());
+  }
+
+  http.end();
+}
+
+void loop() {
+  // For testing: read PIN from Serial and verify it
+  if (Serial.available()) {
+    String pin = Serial.readStringUntil('\n');
+    pin.trim();
+    if (pin.length() == 6) {
+      Serial.printf("\nVerifying PIN: %s\n", pin.c_str());
+      testVerify(pin.c_str());
+    } else if (pin.length() > 0) {
+      Serial.println("PIN must be 6 digits");
+    }
+  }
+}
