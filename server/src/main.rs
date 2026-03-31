@@ -15,6 +15,7 @@ use tokio::sync::RwLock;
 
 mod auth;
 mod db;
+mod package;
 mod pin;
 mod qr;
 mod rate_limit;
@@ -168,6 +169,14 @@ async fn main() {
         .route("/qr/verify", post(qr::verify_qr))
         // Command polling (ESP32 polls this)
         .route("/commands/poll", get(pin::poll_command))
+        // Package system
+        .route("/users", post(package::get_or_create_user))
+        .route("/users/{phone}", get(package::get_user))
+        .route("/packages", post(package::create_package))
+        .route("/packages/{id}", get(package::get_package))
+        .route("/packages/phone/{phone}", get(package::get_packages_by_phone))
+        .route("/packages/{id}/deliverer", post(package::assign_deliverer))
+        .route("/packages/{id}/status", put(package::update_package_status))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
